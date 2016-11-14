@@ -27,12 +27,12 @@ var DefaultSamplerConfig = SamplerConfig{
 
 type Sampler struct {
 	Walkers int // Number of walkers. Must be divisible by two.
-	Chains  [][][][]float64
+	chains  [][][][]float64
 	Rand    *rand.Rand // Internal generator. Must be thread-safe.
 
-
-	probs [][]float64 // ln(PDF) of the current location of each chain.
-	nAccept, nSteps int
+	skip int
+	probs                  [][]float64 // ln(PDF) of the current location of each chain.
+	nAccept, nSteps        int
 	// Buffered values.
 	ap, api, asqrti, afact float64
 }
@@ -50,7 +50,7 @@ func NewSampler(config ...SamplerConfig) *Sampler {
 
 	sampler := &Sampler{
 		Walkers: instConfig.Walkers,
-		Chains: [][][][]float64{
+		chains: [][][][]float64{
 			make([][][]float64, instConfig.Walkers/2),
 			make([][][]float64, instConfig.Walkers/2),
 		},
@@ -68,6 +68,7 @@ func NewSampler(config ...SamplerConfig) *Sampler {
 	return sampler
 }
 
+// TODO: Stop people for passing chains that are too short.
 func (sampler *Sampler) Run(pdf LogPDF, param []Parameter, term ...Terminator) {
 	if len(term) == 0 {
 		panic("Default Terminator not implemented yet.")
@@ -75,9 +76,17 @@ func (sampler *Sampler) Run(pdf LogPDF, param []Parameter, term ...Terminator) {
 
 	sampler.init(pdf, param)
 
-	for noStops(term, sampler.Chains) {
+	for noStops(term, sampler.chains) {
 		sampler.step(pdf)
 	}
+
+	acor := sampler.AutocorrelationTimes()
+	max := acor[0]
+	for i := 1; i < len(acor); i++ {
+		if acor[i] > max { max = acor[i] }
+	}
+
+	sampler.skip = int(math.Ceil(max))
 }
 
 func (sampler *Sampler) init(pdf LogPDF, param []Parameter) {
@@ -87,34 +96,34 @@ func (sampler *Sampler) init(pdf LogPDF, param []Parameter) {
 	}
 
 	for k := 0; k < 2; k++ {
-		for j := range sampler.Chains[k] {
+		for j := range sampler.chains[k] {
 			pj := make([]float64, len(p0))
 			copy(pj, p0)
 			for i := range pj {
 				pj[i] += (sampler.Rand.Float64()*2 - 1)*param[i].S
 			}
-			sampler.Chains[k][j] = append(sampler.Chains[k][j], pj)
-			end := len(sampler.Chains[k][j]) - 1
-			sampler.probs[k][j] = pdf(sampler.Chains[k][j][end])
+			sampler.chains[k][j] = append(sampler.chains[k][j], pj)
+			end := len(sampler.chains[k][j]) - 1
+			sampler.probs[k][j] = pdf(sampler.chains[k][j][end])
 		}
 	}
 }
 
 func (sampler *Sampler) step(pdf LogPDF) {
-	end := len(sampler.Chains[0][0]) - 1
+	end := len(sampler.chains[0][0]) - 1
 
 	for k := 0; k < 2; k++ {
 		kOther := 1 - k
 		_ = kOther
-		for j, chain := range sampler.Chains[k] {
-			iTarget := sampler.Rand.Int63n(int64(len(sampler.Chains[0])))
-			target := sampler.Chains[kOther][iTarget][end]
+		for j, chain := range sampler.chains[k] {
+			iTarget := sampler.Rand.Int63n(int64(len(sampler.chains[0])))
+			target := sampler.chains[kOther][iTarget][end]
 			lnp := sampler.probs[k][j]
 
 			p, lnp := sampler.move(pdf, chain[end], target, lnp)
 
 			sampler.probs[k][j] = lnp
-			sampler.Chains[k][j] = append(chain, p)
+			sampler.chains[k][j] = append(chain, p)
 		}
 	}
 }
@@ -155,4 +164,37 @@ func noStops(term []Terminator, chains [][][][]float64) bool {
 		}
 	}
 	return true
+}
+
+func (sampler *Sampler) Chain(i int) []float64 {
+	nBurn := 20 * sampler.skip
+	nIndependent := (len(sampler.chains[0][0])-nBurn) / sampler.skip + 1
+	out := make([]float64, 0, nIndependent*sampler.Walkers)
+
+	for _, group := range sampler.chains {
+		for _, chain := range group {
+			for j := nBurn; j < len(chain); j++ {
+				out = append(out, chain[j][i])
+			}
+		}
+	}
+
+	return out
+}
+
+func (sampler *Sampler) AutocorrelationTimes() []float64 {
+	chain := make([]float64, len(sampler.chains[0][0]))
+	out := make([]float64, len(sampler.chains[0][0][0]))
+	for i := range out {
+		for j := range chain { chain[j] = 0 }
+
+		for j := range sampler.chains[0] {
+			for c := range chain {
+				chain[c] += sampler.chains[0][j][c][i]
+			}
+		}
+		out[i] = AutocorrelationTime(chain)
+	}
+
+	return out
 }
