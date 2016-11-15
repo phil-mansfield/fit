@@ -1,7 +1,6 @@
 package fit
 
 import (
-	_ "fmt"
 	"math"
 	"math/rand"
 	"time"
@@ -27,14 +26,15 @@ var DefaultSamplerConfig = SamplerConfig{
 
 type Sampler struct {
 	Walkers int // Number of walkers. Must be divisible by two.
-	chains  [][][][]float64
+	chains  [][]float64
 	Rand    *rand.Rand // Internal generator. Must be thread-safe.
 
-	skip int
-	probs                  [][]float64 // ln(PDF) of the current location of each chain.
-	nAccept, nSteps        int
+	skip, dim int
+	probs  [][]float64 // ln(PDF) of the current location of each chain.
+	nAccept, nSteps int
 	// Buffered values.
 	ap, api, asqrti, afact float64
+	src, target, out []float64
 }
 
 func NewSampler(config ...SamplerConfig) *Sampler {
@@ -50,10 +50,6 @@ func NewSampler(config ...SamplerConfig) *Sampler {
 
 	sampler := &Sampler{
 		Walkers: instConfig.Walkers,
-		chains: [][][][]float64{
-			make([][][]float64, instConfig.Walkers/2),
-			make([][][]float64, instConfig.Walkers/2),
-		},
 		Rand: rrand,
 		probs: [][]float64{
 			make([]float64, instConfig.Walkers/2),
@@ -90,74 +86,99 @@ func (sampler *Sampler) Run(pdf LogPDF, param []Parameter, term ...Terminator) {
 }
 
 func (sampler *Sampler) init(pdf LogPDF, param []Parameter) {
-	p0 := make([]float64, len(param))
+	p0, pBuf := make([]float64, len(param)), make([]float64, len(param))
 	for i := range p0 {
 		p0[i] = param[i].V
 	}
 
+	sampler.dim = len(param)
+	sampler.expandChains()
+
 	for k := 0; k < 2; k++ {
-		for j := range sampler.chains[k] {
-			pj := make([]float64, len(p0))
-			copy(pj, p0)
-			for i := range pj {
-				pj[i] += (sampler.Rand.Float64()*2 - 1)*param[i].S
+		for j := 0; j < sampler.Walkers/2; j++ {
+			copy(pBuf, p0)
+			for i := range pBuf {
+				pBuf[i] += (sampler.Rand.Float64()*2 - 1)*param[i].S
 			}
-			sampler.chains[k][j] = append(sampler.chains[k][j], pj)
-			end := len(sampler.chains[k][j]) - 1
-			sampler.probs[k][j] = pdf(sampler.chains[k][j][end])
+			sampler.writeVec(k, 0, j, pBuf)
+			sampler.probs[k][j] = pdf(pBuf)
 		}
 	}
+
+	sampler.src = make([]float64, len(param))
+	sampler.target = make([]float64, len(param))
+	sampler.out = make([]float64, len(param))
+}
+
+func (sampler *Sampler) readVec(group, step, chain int, v []float64) {
+	start := (group*sampler.Walkers/2 + chain)*sampler.dim
+	copy(v, sampler.chains[step][start: start + sampler.dim])
+}
+
+func (sampler *Sampler) writeVec(group, step, chain int, v []float64) {
+	start := (group*sampler.Walkers/2 + chain)*sampler.dim
+	copy(sampler.chains[step][start: start + sampler.dim], v)
 }
 
 func (sampler *Sampler) step(pdf LogPDF) {
-	end := len(sampler.chains[0][0]) - 1
+	end := len(sampler.chains) - 1
+	sampler.expandChains()
 
 	for k := 0; k < 2; k++ {
 		kOther := 1 - k
 		_ = kOther
-		for j, chain := range sampler.chains[k] {
-			iTarget := sampler.Rand.Int63n(int64(len(sampler.chains[0])))
-			target := sampler.chains[kOther][iTarget][end]
+		for j := 0; j < sampler.Walkers/2; j++ {
+			iTarget := sampler.Rand.Int63n(int64(sampler.Walkers/2))
+			sampler.readVec(kOther, end, int(iTarget), sampler.target)
+			sampler.readVec(k, end, j, sampler.src)
+
 			lnp := sampler.probs[k][j]
 
-			p, lnp := sampler.move(pdf, chain[end], target, lnp)
+			lnpNew := sampler.move(
+				pdf, sampler.src, sampler.target, sampler.out, lnp,
+			)
 
-			sampler.probs[k][j] = lnp
-			sampler.chains[k][j] = append(chain, p)
+			sampler.probs[k][j] = lnpNew
+			sampler.writeVec(k, end+1, j, sampler.out)
 		}
 	}
 }
 
+func (sampler *Sampler) expandChains() {
+	sampler.chains = append(
+		sampler.chains, make([]float64, sampler.Walkers*sampler.dim),
+	)
+}
+
 func (sampler *Sampler) move(
-	pdf LogPDF, src, target []float64, lnp float64,
-) (p []float64, lnpNew float64) {
+	pdf LogPDF, src, target, out []float64, lnp float64,
+) (lnpNew float64) {
 
 	dim := len(src)
 	zf := sampler.afact * sampler.Rand.Float64()
 	zr := (1 + zf)*(1 + zf)*sampler.api
 
 	_ = zr
-	p = make([]float64, dim)
-	for i := range p {
-		p[i] = target[i] + zr*(src[i] - target[i])
+	for i := range out {
+		out[i] = target[i] + zr*(src[i] - target[i])
 	}
 
-	lnpNew = pdf(p)
+	lnpNew = pdf(out)
 
 	r := math.Log(sampler.Rand.Float64())
 	if r < float64(dim-1)*math.Log(zr) + lnpNew - lnp {
 		sampler.nSteps++
 		sampler.nAccept++
-		return p, lnpNew
+		return lnpNew
 	} else {
-		copy(p, src)
+		copy(out, src)
 		sampler.nSteps++
-		return p, lnp
+		return lnp
 	}
 }
 
 
-func noStops(term []Terminator, chains [][][][]float64) bool {
+func noStops(term []Terminator, chains [][]float64) bool {
 	for _, t := range term {
 		if t.Stop(chains) {
 			return false
@@ -166,15 +187,22 @@ func noStops(term []Terminator, chains [][][][]float64) bool {
 	return true
 }
 
-func (sampler *Sampler) Chain(i int) []float64 {
+func (sampler *Sampler) Chains() [][]float64 {
 	nBurn := 20 * sampler.skip
-	nIndependent := (len(sampler.chains[0][0])-nBurn) / sampler.skip + 1
-	out := make([]float64, 0, nIndependent*sampler.Walkers)
+	nIndependent := (len(sampler.chains)-nBurn) / sampler.skip + 1
 
-	for _, group := range sampler.chains {
-		for _, chain := range group {
-			for j := nBurn; j < len(chain); j++ {
-				out = append(out, chain[j][i])
+	out := make([][]float64, sampler.dim)
+	for i := range out {
+		out[i] = make([]float64, 0, nIndependent * sampler.Walkers)
+	}
+	buf := make([]float64, sampler.dim)
+	for group := 0; group < 1; group++ {
+		for step := nBurn; step < len(sampler.chains); step += sampler.skip {
+			for chain := 0; chain < sampler.Walkers/2; chain++ {
+				sampler.readVec(group, step, chain, buf)
+				for i := 0; i < sampler.dim; i++ {
+					out[i] = append(out[i], buf[i])
+				}
 			}
 		}
 	}
@@ -182,18 +210,30 @@ func (sampler *Sampler) Chain(i int) []float64 {
 	return out
 }
 
+// TODO: error checking
 func (sampler *Sampler) AutocorrelationTimes() []float64 {
-	chain := make([]float64, len(sampler.chains[0][0]))
-	out := make([]float64, len(sampler.chains[0][0][0]))
-	for i := range out {
-		for j := range chain { chain[j] = 0 }
 
-		for j := range sampler.chains[0] {
-			for c := range chain {
-				chain[c] += sampler.chains[0][j][c][i]
+
+	avgChain := make([][]float64, sampler.dim)
+	for i := range avgChain {
+		avgChain[i] = make([]float64, len(sampler.chains))
+	}
+	buf := make([]float64, sampler.dim)
+
+	for group := 0; group < 1; group++ {
+		for step := 0; step < len(sampler.chains); step ++ {
+			for chain := 0; chain < sampler.Walkers/2; chain++ {
+				sampler.readVec(group, step, chain, buf)
+				for i := 0; i < sampler.dim; i++ {
+					avgChain[i][step] += buf[i]
+				}
 			}
 		}
-		out[i] = AutocorrelationTime(chain)
+	}
+
+	out := make([]float64, sampler.dim)
+	for i := 0; i < sampler.dim; i++ {
+		out[i] = AutocorrelationTime(avgChain[i])
 	}
 
 	return out

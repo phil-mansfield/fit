@@ -25,7 +25,11 @@ func NISTGaussianPDF(data []float64) LogPDF {
 	}
 }
 
-func TestCancelation(t *testing.T) {
+///////////
+// Tests //
+///////////
+
+func TestNIST(t *testing.T) {
 	// This is the most difficult test in the NIST MCMC test suite.
 	// See http://www.itl.nist.gov/div898/strd/mcmc/mcmc.html
 
@@ -52,8 +56,8 @@ func TestCancelation(t *testing.T) {
 
 	sampler.Run(pdf, params, Steps(20000))
 
-	mu := sampler.Chain(0)
-	sigma := sampler.Chain(1)
+	chains := sampler.Chains()
+	mu, sigma := chains[0], chains[1]
 
 	lead := 10000000000000.0
 	mean := leadMean(mu, lead)
@@ -63,11 +67,11 @@ func TestCancelation(t *testing.T) {
 	p025 := sort.Percentile(mu, 0.025)
 
 	// At 20000 steps, the accuracy is actually much higher, but I've
-	// kept delta low so that every one in ten testers doesn't get spurious
-	// test failures (after all, there are ten values being checked).
+	// kept delta low so that every couple of tests doesn't get spurious
+	// case failures (after all, there are ten values being checked).
 	// Feel free to manually confirm this, but at 20000 steps we generate about
 	// 2 million independent samples, so the error on the mean is about
-	// one part in a thousand.
+	// one one thousandth of a standard deviation.
 	delta := 0.005
 
 	if !DeltaEq(mean, 10000000000000.2, delta) {
@@ -138,4 +142,30 @@ func leadStd(xs []float64, lead float64) float64 {
 	}
 	n := float64(len(xs))
 	return math.Sqrt(sqrSum/n - sum*sum/(n*n))
+}
+
+////////////////
+// Benchmarks //
+////////////////
+
+func BenchmarkTenPointGaussian(b *testing.B) {
+	pts := []float64{2, 1, 3, 1, 3, 3, 1, 3, 1, 3}
+	pdf := NISTGaussianPDF(pts)
+	sampler := NewSampler()
+	params := []Parameter{ {V: 0.0, S: 1.0}, {V: 1.0, S: 0.5} }
+
+	b.ResetTimer()
+	steps := b.N / 100
+	if steps < 1 { steps = 1 }
+	sampler.Run(pdf, params, Steps(steps))
+}
+
+func BenchmarkTenPointGaussianPDF(b *testing.B) {
+	pts := []float64{2, 1, 3, 1, 3, 3, 1, 3, 1, 3}
+	pdf := NISTGaussianPDF(pts)
+	p := []float64{1, 1}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pdf(p)
+	}
 }
