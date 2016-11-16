@@ -1,8 +1,28 @@
 package fit
 
 import (
+	"fmt"
 	"math"
 )
+
+func ConstantError1D(
+	x, y []float64, p0 []Parameter, f Func1D,
+) (p, err []float64, cov [][]float64)  {
+	pdf := ConstantError1DPDF(x, y, f)
+	sampler := NewSampler()
+	sampler.Run(pdf, p0, Steps(20000))
+	chains := sampler.Chains()
+	return chainStats(chains)
+}
+
+func Error1D(
+	x, y, yerr []float64, p0 []Parameter, f Func1D,
+) (p, err []float64, cov [][]float64)  {
+	pdf := Error1DPDF(x, y, yerr, f)
+	sampler := NewSampler()
+	sampler.Run(pdf, p0, Steps(20000))
+	return chainStats(sampler.Chains())
+}
 
 func chainStats(chains [][]float64) (mean, err []float64, cov [][]float64) {
 	dim := len(chains)

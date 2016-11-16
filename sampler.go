@@ -83,6 +83,7 @@ func (sampler *Sampler) Run(pdf LogPDF, param []Parameter, term ...Terminator) {
 	}
 
 	sampler.skip = int(math.Ceil(max))
+	if sampler.skip < 0 { sampler.skip = 50 }
 }
 
 func (sampler *Sampler) init(pdf LogPDF, param []Parameter) {
@@ -195,6 +196,7 @@ func (sampler *Sampler) Chains() [][]float64 {
 	for i := range out {
 		out[i] = make([]float64, 0, nIndependent * sampler.Walkers)
 	}
+
 	buf := make([]float64, sampler.dim)
 	for group := 0; group < 1; group++ {
 		for step := nBurn; step < len(sampler.chains); step += sampler.skip {

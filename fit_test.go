@@ -1,17 +1,23 @@
 package fit
 
 import (
+	"fmt"
 	"math"
+	"math/rand"
 	"testing"
+	"time"
+	"io/ioutil"
+	"strings"
 	"github.com/phil-mansfield/shellfish/math/sort"
+	"github.com/phil-mansfield/shellfish/cmd/catalog"
+
+	//plt "github.com/phil-mansfield/pyplot"
 )
 
 func NISTGaussianPDF(data []float64) LogPDF {
 	return func(param []float64) float64 {
 		mu, sigma := param[0], param[1]
-		if sigma < 0 {
-			return math.Inf(-1)
-		}
+		if sigma < 0 { return math.Inf(-1) }
 
 		sum := 0.0
 		for _, x := range data {
@@ -20,7 +26,6 @@ func NISTGaussianPDF(data []float64) LogPDF {
 		}
 
 		sum /= 2*sigma*sigma
-
 		return sum - math.Log(sigma)*float64(len(data) + 1)
 	}
 }
@@ -142,6 +147,61 @@ func leadStd(xs []float64, lead float64) float64 {
 	}
 	n := float64(len(xs))
 	return math.Sqrt(sqrSum/n - sum*sum/(n*n))
+}
+
+func TestConstantError1D(t *testing.T) {
+	f := func(p []float64, x float64) float64 {
+		y0, m := p[0], p[1]
+		return y0 + m*x
+	}
+
+	pTrue := []float64{3, -1}
+
+	x := make([]float64, 30)
+	for i := range x { x[i] = float64(i) / 15.0 - 1.0}
+	y := make([]float64, 30)
+	for i := range y { y[i] = f(pTrue, x[i])}
+
+	err := 0.05
+	rand.Seed(time.Now().UnixNano())
+
+	sy := make([]float64, 30)
+	for i := range y { sy[i] = y[i] + rand.NormFloat64()*err }
+
+	p0 := []Parameter{{V: 2, S: 0.1}, {V: 0, S: 0.1}, {V:1, S:0.1}}
+	p, std, cov := ConstantError1D(x, sy, p0, f)
+	fmt.Println(p)
+	fmt.Println(std)
+	fmt.Println(cov)
+
+	//fy := make([]float64, 1000)
+	//for i := range fy { fy[i] = f(p, x[i]) }
+
+	/*
+	plt.Plot(x, y, plt.C("k"), plt.LW(3))
+	plt.Plot(x, sy, "o", plt.C("r"))
+	plt.Plot(x, fy, plt.C("r"), plt.LW(3))
+	plt.Show()
+	*/
+}
+
+func TestNorrisNIST(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+	txt, _ := ioutil.ReadFile("test_files/norris.dat")
+	lines := strings.Split(string(txt), "\n")
+
+	_, cols, _ := catalog.ParseCols(lines, []int{}, []int{0, 1})
+	x, y := cols[0], cols[1]
+
+	f := func(p []float64, x float64) float64 {
+		return p[0] + p[1]*x
+	}
+	p0 := []Parameter{{V:0, S: 1}, {V:0, S:1}, {V:1, S:0.1}}
+
+	p, std, cov := ConstantError1D(x, y, p0, f)
+	fmt.Println(p)
+	fmt.Println(std)
+	fmt.Println(cov)
 }
 
 ////////////////
