@@ -16,11 +16,11 @@ user will be applied).
 ## Background
 
 This section will have two subsections: the first focusing on the most common fitting
-approach found in numerical libraries, least squares minimization, and a second focusing
+approach found in numerical libraries, least squares, and a second focusing
 on the proposed approach for the `fit` pacakge, Markov chain Monte Carlo.
 
 This can be safely skipped if you are already familiar with the motivation behind using
-Markov chains to fit curves.
+Markov chains to fit curves or if you're willing to trust me.
 
 ### Least-Squares
 
@@ -64,7 +64,8 @@ statistical mode is not correct (I'll call these issues "class A") and the secon
 problems that arise even when this model is correct ("class B"). I'll list the most
 important class A and class B issues.
 
-Class A:
+####Class A:
+
 * _Non-gaussian errors_ - The central limit theorem means that the assumption of guassian
 error bars are usually a pretty good one, but there are two common cases where this
 isn't true. The first is when you've log-scaled your data before fitting (a common
@@ -89,7 +90,7 @@ no way to handle them.
 least squares. They essentially have to be treated as very complicated priors on the
 parameter space, which least squares is already not very good at dealing with. If your
 upper limits aren't sharp cutoffs, it becomes impossible to model them.
-* Distributions - The entire set up described in the derivation above assumes that the
+* _Distributions_ - The entire set up described in the derivation above assumes that the
 true location of each point is somewhere along an infinitely thin line and is then
 scattered from its true location according to its measured error. However, _many_ physical
 relations have intrinsic scatter (such as just about any observation relation in
@@ -100,6 +101,48 @@ With sufficient [elbow grease](http://scipy-cookbook.readthedocs.io/items/Fittin
 least squares can be coaxed into fitting very simple distributions to data, but it is not
 an easy or natural task.
 
-Class B:
+####Class B:
+
+* _Local Minima are not Global Minima_ - This is an issue which is brought up frequently (maybe
+too frequently), but all popular least squares finders stop upon finding a local minimum, which
+might not be a global minimum. Additionally, there will be nothing about the output of the finder
+which could alert the user that this has happened.
+* _Numerical Derivatives are Messy_ - The best least squares estimators rely on knowing the
+Jacobian of the fitted function. If this can't be provided analytically it will need to be
+estimated numerically. This is an issue because the value the objective function takes on in the
+outskirts can be noisy, which can sometimes cause the estimator to aimlessly wander around the outskirts of
+parameter space wihtout converging.
+* _Unknown Error Bars are a Model Parameter_ - You may have noticed that in the earlier derivation
+I was playing fast and loose with the error term. In reality what I should have done is computed
+`P(p, sigma | data)` instead of `P(p | data)`. The reason I didn't do this is because if you had,
+I would have found that the point of maximum likelihood didn't neccessaily need to coexist with
+the point that minimizes square residuals.
+* _Points of Maximum Likelihood are Less Useful Than You Might Think_ - While it might sound good
+to pick out the point of maximum likelihood, this isn't always the way you want to report
+best-fit parameters. There are a few toubling aspects to using points of maximum likelihood
+(e.g. What if the marginalized point of maximum likelihood for a given parameter is in a
+different location than the multivariate point of maximum likelihood? What if the objective
+function is bimodal and the integrated likelihood under the lower peak is higher than the
+integrated likelihood under the higher peak?) and there are other ways of reporting
+parameters which have attractive propreties (such as taking the median of the marginalized
+PDF for each parameter). With least squares you do not have the option to 
+* _Least Squares Methods Aren't Good at Reporting Errors_ - Least squares methods focus on finding
+the peak of `P(p | data)`, but errors on fit parameters are determined by the wings of the
+`P(p | data)`, where most least squares estimators don't have much information. The standard approach
+is to evaluate the Jacobian near the peak, to model `P(p | data)` as a perfect Gaussian and to
+extrapolate out to the 68% contours. This works reasonably well if you're only interested in
+1-sigma errors, but if you wanted to make statements like "This fit rules out theory X to an accuracy
+of 3 sigma," you won't be able to. Furthermore, you have no indication of how accurate your
+error estimates.
+
+(These are not obscure problems. Every "Class B" issue I described here show up in many of the NIST
+least squares [correctness tests](http://www.itl.nist.gov/div898/strd/general/dataarchive.html).)
+
+None of this is to say that least squares is "wrong." Least squares estimators do exactly
+they are supposed to do (finding the point of maximum likelihood for the simplest error model),
+and they do it very quickly. It's just that they should not be viewed
+as "general purpose" fitters. While our `fit` package should certainly contain some sort of
+Levenberg-Marquardt functionality, the core behavior will need to be provided by something else.
 
 ### Markov Chains
+
