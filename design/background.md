@@ -1,19 +1,4 @@
-# Proposal: Add a curve-fitting package to gonum
-
-## Abstract
-
-Curve-fitting is a common scientific task and a mainstay of numerical libraries. The current
-absence of any Go-based general purpose curve fitting library is a major roadblock to the
-acceptance of the language as a scientific programming platform.
-
-This document will describe the structure of a proposed `fit` package to be added to gonum.
-The core of the library will be a robust affine-invariant Markov chain Monte Carlo sampler,
-although wrappers will be provided to hide this fact from non-expert users. The low-level
-structure will be similar to the popular Python-based MCMC library
-[emcee](http://dan.iel.fm/emcee/current/) (although lessons learned after a half decade of
-user will be applied).
-
-## Background
+# Background
 
 This section will have two subsections: the first focusing on the most common fitting
 approach found in numerical libraries, least squares, and a second focusing
@@ -22,7 +7,7 @@ on the proposed approach for the `fit` pacakge, Markov chain Monte Carlo.
 This can be safely skipped if you are already familiar with the motivation behind using
 Markov chains to fit curves or if you're willing to trust me.
 
-### Least-Squares
+## Least-Squares
 
 The most well-known fitting approach is least-squares minimization. Here, the best-fit
 parameters of a function are taken to be the ones which result in the smallest squared
@@ -64,7 +49,7 @@ statistical mode is not correct (I'll call these issues "class A") and the secon
 problems that arise even when this model is correct ("class B"). I'll list the most
 important class A and class B issues.
 
-####Class A:
+###Class A:
 
 * _Non-gaussian errors_ - The central limit theorem means that the assumption of guassian
 error bars are usually a pretty good one, but there are two common cases where this
@@ -101,7 +86,7 @@ With sufficient [elbow grease](http://scipy-cookbook.readthedocs.io/items/Fittin
 least squares can be coaxed into fitting very simple distributions to data, but it is not
 an easy or natural task.
 
-####Class B:
+###Class B:
 
 * _Local Minima are not Global Minima_ - This is an issue which is brought up frequently (maybe
 too frequently), but all popular least squares finders stop upon finding a local minimum, which
@@ -144,7 +129,7 @@ and they do it very quickly. It's just that they should not be viewed
 as "general purpose" fitters. While our `fit` package should certainly contain some sort of
 Levenberg-Marquardt functionality, the core behavior will need to be provided by something else.
 
-### Markov Chains
+## Markov Chains
 
 An obvious alternative to finding just the point of maximum likelihood is to evaluate the entire
 PDF. Naively, one could imagine making a grid across the viable parameter space
