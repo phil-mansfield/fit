@@ -173,16 +173,36 @@ func TestConstantError1D(t *testing.T) {
 	fmt.Println(p)
 	fmt.Println(std)
 	fmt.Println(cov)
+}
 
-	//fy := make([]float64, 1000)
-	//for i := range fy { fy[i] = f(p, x[i]) }
+func TestScatterError1D(t *testing.T) {
+	f := func(p []float64, x float64) float64 {
+		y0, m := p[0], p[1]
+		return y0 + m*x
+	}
 
-	/*
-	plt.Plot(x, y, plt.C("k"), plt.LW(3))
-	plt.Plot(x, sy, "o", plt.C("r"))
-	plt.Plot(x, fy, plt.C("r"), plt.LW(3))
-	plt.Show()
-	*/
+	pTrue := []float64{3, -1, 0.3}
+
+	x := make([]float64, 30)
+	for i := range x { x[i] = float64(i) / 15.0 - 1.0}
+	y := make([]float64, 30)
+	for i := range y { y[i] = f(pTrue, x[i])}
+
+	err := make([]float64, 30)
+	for i := range err { err[i] = 0.1  + float64(i) / 100 }
+	rand.Seed(time.Now().UnixNano())
+
+	sy := make([]float64, 30)
+	for i := range y {
+		sy[i] = y[i] + rand.NormFloat64()*err[i] +
+			rand.NormFloat64()*pTrue[2]
+	}
+
+	p0 := []Parameter{{V: 2, S: 0.1}, {V: 0, S: 0.1}, {V:1, S:0.1}}
+	p, std, cov := ScatterError1D(x, sy, err, p0, f)
+	fmt.Println(p)
+	fmt.Println(std)
+	fmt.Println(cov)
 }
 
 func TestNorrisNIST(t *testing.T) {

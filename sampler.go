@@ -19,7 +19,7 @@ type SamplerConfig struct {
 }
 
 var DefaultSamplerConfig = SamplerConfig{
-	Walkers: 100,
+	Walkers: 200,
 	Stretch: 2.0,
 	Rand: nil,
 }
@@ -214,8 +214,6 @@ func (sampler *Sampler) Chains() [][]float64 {
 
 // TODO: error checking
 func (sampler *Sampler) AutocorrelationTimes() []float64 {
-
-
 	avgChain := make([][]float64, sampler.dim)
 	for i := range avgChain {
 		avgChain[i] = make([]float64, len(sampler.chains))

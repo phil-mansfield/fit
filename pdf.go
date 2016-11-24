@@ -37,13 +37,16 @@ func ScatterError1DPDF(x, y, yerr []float64, f Func1D) LogPDF {
 		sum := 0.0
 		fp := param[:len(param) - 1]
 		ms := param[len(param) - 1] // model sigma
+		if ms < 0 { return math.Inf(-1) }
 
 		for i := range x {
 			dy := f(fp, x[i]) - y[i]
 			ds := yerr[i] // data sigma
-			sNorm := ds*ds + ms*ms
-
-			sum += -0.5*(math.Log(sNorm) - dy*dy/sNorm)
+			//sNorm := ds*ds + ms*ms
+			//sum += -0.5*(math.Log(sNorm) - dy*dy/sNorm)
+			//s := math.Sqrt(ds*ds + ms*ms)
+			s := ds*ds + ms*ms
+			sum += -dy*dy / (2*s) - math.Log(math.Sqrt(s))
 		}
 
 		return sum

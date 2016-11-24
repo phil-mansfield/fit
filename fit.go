@@ -1,7 +1,6 @@
 package fit
 
 import (
-	"fmt"
 	"math"
 )
 
@@ -19,6 +18,15 @@ func Error1D(
 	x, y, yerr []float64, p0 []Parameter, f Func1D,
 ) (p, err []float64, cov [][]float64)  {
 	pdf := Error1DPDF(x, y, yerr, f)
+	sampler := NewSampler()
+	sampler.Run(pdf, p0, Steps(20000))
+	return chainStats(sampler.Chains())
+}
+
+func ScatterError1D(
+	x, y, yerr []float64, p0 []Parameter, f Func1D,
+) (p, err []float64, cov [][]float64)  {
+	pdf := ScatterError1DPDF(x, y, yerr, f)
 	sampler := NewSampler()
 	sampler.Run(pdf, p0, Steps(20000))
 	return chainStats(sampler.Chains())
@@ -72,14 +80,11 @@ func chainCovariance(chains [][]float64, mean []float64) [][]float64 {
 	for c1 := range chains {
 		for c2 := c1 + 1; c2 < len(chains); c2++ {
 			for i := range chains[0] {
-				cov[c1][c2] += chains[c1][i] * chains[c2][i]
+				dx1 := chains[c1][i] - mean[c1]
+				dx2 := chains[c2][i] - mean[c2]
+				cov[c1][c2] += dx1*dx2
 			}
-		}
-	}
-
-	for c1 := range chains {
-		for c2 := c1 + 1; c2 < len(chains); c2++ {
-			cov[c1][c2] = cov[c1][c2] / n - mean[c1] * mean[c2]
+			cov[c1][c2] /= n
 		}
 	}
 
