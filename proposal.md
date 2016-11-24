@@ -146,3 +146,5 @@ Levenberg-Marquardt functionality, the core behavior will need to be provided by
 
 ### Markov Chains
 
+An obvious alternative to finding just the point of maximum likelihood is to evaluate the entire
+PDF. Naively, one could imagine making a grid across the viable parameter space
