@@ -192,23 +192,26 @@ p := sampler.MostLikelyParameters()
 
 ### Wrapper functions
 
+There are two built-in models
+
 ```go
 var (
-	Curve Model
-	Line
+	Line Model
 	PowerLaw
-	CurveWithScatter
-	LineWithScatter
-	PowerLawWithScatter
 )
+
+func Curve() Model
 
 type Model interface {
 	UnknownErrors(x, y []float64) (Output, error)
-	YErrors(x, y []float64) (Output, error)
 	
-	// Slow for arbitrary functions, but fast for power laws and lines:
-	XYErrors(x, y []float64) (Output, error)
-	// Can't be garuanteed to be correct for arbitrary curves:
-	XErrors(x, y []float64) (Output, error)
+	YErrors(x, y, yerr []float64) (Output, error)
+	YErrorsAndScatter(x, y, yerr []float64) (Output, error)
+	
+	XErrors(x, y, xerr []float64) (Output, error)
+	XErrorsAndScatter(x, y, xerr []float64) (Output, error)
+	
+	XYErrors(x, y, xerr, yerr []float64) (Output, error)
+	XYErrorsAndScatter(x, y, xerr, yerr []float64) (Output, error)
 }
 ```
