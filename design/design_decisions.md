@@ -47,4 +47,8 @@ do)
 
 "funcs?"
 
-### Should `WidthScatter` be a model type or a method type?
+### Should `WithScatter` be a model type or a method type?
+
+### `Parameter` method signature
+
+### How exactly should fititng power laws work?
